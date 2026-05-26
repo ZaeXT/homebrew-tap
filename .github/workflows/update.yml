@@ -1,0 +1,67 @@
+name: Update Sing-Box Alpha
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 每 6 小时检查一次
+  workflow_dispatch:      # 允许手动触发
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Latest Alpha Version
+        id: get_version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 获取最新的 pre-release 标签 (v1.x.x-alpha.x)
+          LATEST_TAG=$(gh api repos/SagerNet/sing-box/releases --jq '[.[] | select(.prerelease == true)][0].tag_name')
+          # 去掉前面的 v
+          VERSION_NUM=${LATEST_TAG#v}
+          echo "version=$VERSION_NUM" >> $GITHUB_OUTPUT
+          echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Check if Version Changed
+        id: check_version
+        run: |
+          CURRENT_VERSION=$(grep 'version "' Formula/sing-box-alpha.rb | cut -d '"' -f 2)
+          if [ "${{ steps.get_version.outputs.version }}" == "$CURRENT_VERSION" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update Formula
+        if: steps.check_version.outputs.changed == 'true'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TAG="${{ steps.get_version.outputs.tag }}"
+          
+          # 下载二进制文件并计算 SHA256
+          URL_ARM="https://github.com/SagerNet/sing-box/releases/download/${TAG}/sing-box-${VERSION}-darwin-arm64.tar.gz"
+          URL_AMD="https://github.com/SagerNet/sing-box/releases/download/${TAG}/sing-box-${VERSION}-darwin-amd64.tar.gz"
+          
+          echo "Fetching SHA256 for ARM64..."
+          SHA_ARM=$(curl -L -s $URL_ARM | sha256sum | awk '{print $1}')
+          echo "Fetching SHA256 for AMD64..."
+          SHA_AMD=$(curl -L -s $URL_AMD | sha256sum | awk '{print $1}')
+          
+          # 更新文件
+          # 1. 更新版本号
+          sed -i "s/version \".*\" # VERSION_PLACEHOLDER/version \"$VERSION\" # VERSION_PLACEHOLDER/" Formula/sing-box-alpha.rb
+          # 2. 更新 ARM Hash
+          sed -i "/# arm64_sha/s/sha256 \".*\"/sha256 \"$SHA_ARM\"/" Formula/sing-box-alpha.rb
+          # 3. 更新 AMD Hash
+          sed -i "/# amd64_sha/s/sha256 \".*\"/sha256 \"$SHA_AMD\"/" Formula/sing-box-alpha.rb
+
+      - name: Commit and Push
+        if: steps.check_version.outputs.changed == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/sing-box-alpha.rb
+          git commit -m "Update sing-box-alpha to ${{ steps.get_version.outputs.version }}"
+          git push

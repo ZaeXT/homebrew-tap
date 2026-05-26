@@ -4,7 +4,7 @@ class SingBoxAlpha < Formula
   # VERSION_PLACEHOLDER
   version "1.14.0-aplha.16" 
   url "https://github.com/SagerNet/sing-box/archive/refs/tags/v#{version}.tar.gz"
-  sha256 "HASH_SOURCE_PLACEHOLDER" # source_sha
+  sha256 "4b868578ed70a4da7ecafc2df3e1ad3c20ed65a1ce0100c88a0f4e997b13119a" # source_sha
   license "GPL-3.0-or-later"
   head "https://github.com/SagerNet/sing-box.git", branch: "main"
 

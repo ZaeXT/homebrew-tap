@@ -28,7 +28,7 @@ class SingBoxAlpha < Formula
     end
 
     ldflags = "-s -w -X github.com/sagernet/sing-box/constant.Version=#{version} #{ldflags_shared} -buildid="
-    system "go", "build", *std_go_args(ldflags: ldflags, tags: tags), "./cmd/sing-box"
+    system "go", "build", *std_go_args(output: bin/"sing-box", ldflags: ldflags, tags: tags), "./cmd/sing-box"
     generate_completions_from_executable(bin/"sing-box", shell_parameter_format: :cobra)
   end
 

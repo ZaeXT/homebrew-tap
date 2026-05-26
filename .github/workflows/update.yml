@@ -2,12 +2,14 @@ name: Update Sing-Box Alpha
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # 每 6 小时检查一次
-  workflow_dispatch:      # 允许手动触发
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,9 +19,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取最新的 pre-release 标签 (v1.x.x-alpha.x)
           LATEST_TAG=$(gh api repos/SagerNet/sing-box/releases --jq '[.[] | select(.prerelease == true)][0].tag_name')
-          # 去掉前面的 v
           VERSION_NUM=${LATEST_TAG#v}
           echo "version=$VERSION_NUM" >> $GITHUB_OUTPUT
           echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
@@ -27,7 +27,7 @@ jobs:
       - name: Check if Version Changed
         id: check_version
         run: |
-          CURRENT_VERSION=$(grep 'version "' Formula/sing-box-alpha.rb | cut -d '"' -f 2)
+          CURRENT_VERSION=$(grep 'version "' Formula/sing-box-alpha.rb | head -n 1 | cut -d '"' -f 2)
           if [ "${{ steps.get_version.outputs.version }}" == "$CURRENT_VERSION" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
@@ -39,23 +39,14 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           TAG="${{ steps.get_version.outputs.tag }}"
+          URL_SOURCE="https://github.com/SagerNet/sing-box/archive/refs/tags/${TAG}.tar.gz"
           
-          # 下载二进制文件并计算 SHA256
-          URL_ARM="https://github.com/SagerNet/sing-box/releases/download/${TAG}/sing-box-${VERSION}-darwin-arm64.tar.gz"
-          URL_AMD="https://github.com/SagerNet/sing-box/releases/download/${TAG}/sing-box-${VERSION}-darwin-amd64.tar.gz"
+          echo "Fetching SHA256 for Source Code..."
+          SHA_SOURCE=$(curl -L -s $URL_SOURCE | sha256sum | awk '{print $1}')
           
-          echo "Fetching SHA256 for ARM64..."
-          SHA_ARM=$(curl -L -s $URL_ARM | sha256sum | awk '{print $1}')
-          echo "Fetching SHA256 for AMD64..."
-          SHA_AMD=$(curl -L -s $URL_AMD | sha256sum | awk '{print $1}')
-          
-          # 更新文件
-          # 1. 更新版本号
+          # 精准替换
           sed -i "s/version \".*\" # VERSION_PLACEHOLDER/version \"$VERSION\" # VERSION_PLACEHOLDER/" Formula/sing-box-alpha.rb
-          # 2. 更新 ARM Hash
-          sed -i "/# arm64_sha/s/sha256 \".*\"/sha256 \"$SHA_ARM\"/" Formula/sing-box-alpha.rb
-          # 3. 更新 AMD Hash
-          sed -i "/# amd64_sha/s/sha256 \".*\"/sha256 \"$SHA_AMD\"/" Formula/sing-box-alpha.rb
+          sed -i "/# source_sha/s/sha256 \".*\"/sha256 \"$SHA_SOURCE\"/" Formula/sing-box-alpha.rb
 
       - name: Commit and Push
         if: steps.check_version.outputs.changed == 'true'

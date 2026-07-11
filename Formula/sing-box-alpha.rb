@@ -1,9 +1,9 @@
 class SingBoxAlpha < Formula
   desc "Universal proxy platform"
   homepage "https://sing-box.sagernet.org"
-  version "1.14.0-alpha.42" # VERSION_PLACEHOLDER
+  version "1.14.0-alpha.43" # VERSION_PLACEHOLDER
   url "https://github.com/SagerNet/sing-box/archive/refs/tags/v#{version}.tar.gz"
-  sha256 "56fd05903b1f0934892f134252182e8b81feea5e31f4319044c0029e6e5b0a6f" # source_sha
+  sha256 "4a147867e5fbbecc263b6c301cebae74e301789b9501137c9c5b2450393b1653" # source_sha
   license "GPL-3.0-or-later"
   head "https://github.com/SagerNet/sing-box.git", branch: "main"
 

@@ -1,4 +1,4 @@
-class SingBoxAlpha < Formula
+class SingBoxBeta < Formula
   desc "Universal proxy platform"
   homepage "https://sing-box.sagernet.org"
   version "1.14.0-beta.8" # VERSION_PLACEHOLDER

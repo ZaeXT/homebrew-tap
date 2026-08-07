@@ -1,4 +1,4 @@
-name: Update Sing-Box Alpha
+name: Update Sing-Box Beta
 
 on:
   schedule:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get Latest Alpha Version
+      - name: Get Latest Beta Version
         id: get_version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -27,7 +27,7 @@ jobs:
       - name: Check if Version Changed
         id: check_version
         run: |
-          CURRENT_VERSION=$(grep 'version "' Formula/sing-box-alpha.rb | head -n 1 | cut -d '"' -f 2)
+          CURRENT_VERSION=$(grep 'version "' Formula/sing-box-beta.rb | head -n 1 | cut -d '"' -f 2)
           if [ "${{ steps.get_version.outputs.version }}" == "$CURRENT_VERSION" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
@@ -45,14 +45,14 @@ jobs:
           SHA_SOURCE=$(curl -L -s $URL_SOURCE | sha256sum | awk '{print $1}')
           
           # 精准替换
-          sed -i "s/version \".*\" # VERSION_PLACEHOLDER/version \"$VERSION\" # VERSION_PLACEHOLDER/" Formula/sing-box-alpha.rb
-          sed -i "/# source_sha/s/sha256 \".*\"/sha256 \"$SHA_SOURCE\"/" Formula/sing-box-alpha.rb
+          sed -i "s/version \".*\" # VERSION_PLACEHOLDER/version \"$VERSION\" # VERSION_PLACEHOLDER/" Formula/sing-box-beta.rb
+          sed -i "/# source_sha/s/sha256 \".*\"/sha256 \"$SHA_SOURCE\"/" Formula/sing-box-beta.rb
 
       - name: Commit and Push
         if: steps.check_version.outputs.changed == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/sing-box-alpha.rb
-          git commit -m "Update sing-box-alpha to ${{ steps.get_version.outputs.version }}"
+          git add Formula/sing-box-beta.rb
+          git commit -m "Update sing-box-beta to ${{ steps.get_version.outputs.version }}"
           git push

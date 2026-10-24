@@ -1,0 +1,145 @@
+name: Update Context Mapper CLI
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: update-context-mapper-cli
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Read latest Maven release
+        id: latest
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          import urllib.request
+          import xml.etree.ElementTree as ET
+
+          metadata_url = "https://repo1.maven.org/maven2/org/contextmapper/context-mapper-cli/maven-metadata.xml"
+          with urllib.request.urlopen(metadata_url, timeout=30) as response:
+              metadata = ET.fromstring(response.read())
+
+          if metadata.findtext("groupId") != "org.contextmapper":
+              raise SystemExit("Unexpected Maven groupId")
+          if metadata.findtext("artifactId") != "context-mapper-cli":
+              raise SystemExit("Unexpected Maven artifactId")
+
+          version = metadata.findtext("./versioning/release")
+          if version is None or re.fullmatch(r"\d+(?:\.\d+)+", version) is None:
+              raise SystemExit(f"Invalid Maven release version: {version!r}")
+
+          print(f"version={version}")
+          PY
+
+      - name: Check if formula version changed
+        id: check
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+        run: |
+          mapfile -t current_versions < <(sed -n -E 's/^  version "([^"]+)"$/\1/p' Formula/context-mapper-cli.rb)
+          if (( ${#current_versions[@]} != 1 )); then
+            echo "Expected exactly one formula version" >&2
+            exit 1
+          fi
+
+          if [[ "${current_versions[0]}" == "$VERSION" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifact and verify Maven checksum
+        id: artifact
+        if: steps.check.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+        run: |
+          artifact_url="https://repo1.maven.org/maven2/org/contextmapper/context-mapper-cli/${VERSION}/context-mapper-cli-${VERSION}.tar"
+          archive="$RUNNER_TEMP/context-mapper-cli.tar"
+          curl --fail --location --retry 3 --silent --show-error --output "$archive" "$artifact_url"
+
+          expected_sha256="$(curl --fail --location --retry 3 --silent --show-error "${artifact_url}.sha256" | tr -d '[:space:]')"
+          if [[ ! "$expected_sha256" =~ ^[[:xdigit:]]{64}$ ]]; then
+            echo "Maven Central returned an invalid SHA-256 checksum" >&2
+            exit 1
+          fi
+
+          actual_sha256="$(sha256sum "$archive" | awk '{ print $1 }')"
+          if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+            echo "Downloaded artifact does not match Maven Central's SHA-256" >&2
+            exit 1
+          fi
+
+          echo "sha256=$actual_sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        if: steps.check.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+          SHA256: ${{ steps.artifact.outputs.sha256 }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          sha256 = os.environ["SHA256"]
+          if re.fullmatch(r"\d+(?:\.\d+)+", version) is None:
+              raise SystemExit("Invalid version provided to formula updater")
+          if re.fullmatch(r"[0-9a-f]{64}", sha256) is None:
+              raise SystemExit("Invalid SHA-256 provided to formula updater")
+
+          formula_path = Path("Formula/context-mapper-cli.rb")
+          formula = formula_path.read_text(encoding="utf-8")
+          url = (
+              "  url \"https://search.maven.org/remotecontent?filepath="
+              f"org/contextmapper/context-mapper-cli/{version}/"
+              f"context-mapper-cli-{version}.tar\""
+          )
+          replacements = (
+              (
+                  r'^  url "https://search\.maven\.org/remotecontent\?filepath=org/contextmapper/context-mapper-cli/\d+(?:\.\d+)+/context-mapper-cli-\d+(?:\.\d+)+\.tar"$',
+                  url,
+              ),
+              (r'^  version "\d+(?:\.\d+)+"$', f'  version "{version}"'),
+              (r'^  sha256 "[0-9a-f]{64}"$', f'  sha256 "{sha256}"'),
+          )
+
+          for pattern, replacement in replacements:
+              formula, count = re.subn(pattern, replacement, formula, count=1, flags=re.MULTILINE)
+              if count != 1:
+                  raise SystemExit(f"Expected one formula match for {pattern!r}, got {count}")
+
+          formula_path.write_text(formula, encoding="utf-8")
+          PY
+
+          ruby -c Formula/context-mapper-cli.rb
+          git diff --check
+
+      - name: Commit and push update
+        if: steps.check.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/context-mapper-cli.rb
+          git diff --cached --check
+          git commit -m "Update context-mapper-cli to ${VERSION}"
+          git push origin HEAD:main
